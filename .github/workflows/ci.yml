@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, uat]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint · Build · Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint (tsc --noEmit)
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Unit + e2e tests (mock LLM)
+        run: npm test
+      - name: npm pack --dry-run
+        run: npm pack --dry-run
+      - name: Smoke CLI (--version / --help / --offline)
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js --help
+          node dist/cli.js scan --offline 2>/dev/null || true
+
+  live-smoke:
+    name: Live-provider smoke (manual, requires keys)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [anthropic, openai]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Run live smoke against ${{ matrix.provider }}
+        env:
+          CTX_LIVE: "1"
+          CTX_PROVIDER: ${{ matrix.provider }}
+          CTX_ANTHROPIC_API_KEY: ${{ secrets.CTX_ANTHROPIC_API_KEY }}
+          CTX_OPENAI_API_KEY: ${{ secrets.CTX_OPENAI_API_KEY }}
+        run: |
+          if [ -n "$CTX_ANTHROPIC_API_KEY" ] || [ -n "$CTX_OPENAI_API_KEY" ]; then
+            echo "Live keys present — running live e2e."
+            npm run test:live
+          else
+            echo "::warning::No live keys in secrets; skipping live smoke."
+          fi

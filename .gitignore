@@ -1,0 +1,14 @@
+node_modules
+dist
+*.log
+.DS_Store
+*.tsbuildinfo
+.coverage
+
+# Local contextforge runtime state. `.contextforge/project.json` is
+# intentionally NOT ignored — commit it so the team shares scanner
+# heuristics. Override per-repo by editing `.gitignore`.
+.contextforge/graph.db
+.contextforge/graph.db-*
+.contextforge/.scan-cache.json
+.contextforge/llm-cache.db
