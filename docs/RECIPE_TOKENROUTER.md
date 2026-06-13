@@ -66,9 +66,9 @@ export CTX_OPENAI_COMPAT_API_KEY="<paste-your-tokenrouter-key>"
 
 # The model id as TokenRouter lists it. If you see "model not found",
 # check your TokenRouter dashboard for the exact slug — common patterns
-# are minimax-m3, minimax/minimax-m3, or a custom name they set.
-export CTX_PLANNER_MODEL=minimax-m3
-export CTX_WRITER_MODEL=minimax-m3
+# are MiniMax-M3 (capitalised as TokenRouter lists it).
+export CTX_PLANNER_MODEL=MiniMax-M3
+export CTX_WRITER_MODEL=MiniMax-M3
 ```
 
 Optional: pin the env so it survives shell restarts.
@@ -81,8 +81,8 @@ cat >> ~/.zshrc <<'EOF'
 export CTX_PROVIDER=openai-compat
 export CTX_OPENAI_COMPAT_BASE_URL=https://api.tokenrouter.com/v1
 export CTX_OPENAI_COMPAT_API_KEY="<paste-your-tokenrouter-key>"
-export CTX_PLANNER_MODEL=minimax-m3
-export CTX_WRITER_MODEL=minimax-m3
+export CTX_PLANNER_MODEL=MiniMax-M3
+export CTX_WRITER_MODEL=MiniMax-M3
 EOF
 
 source ~/.zshrc
@@ -135,8 +135,8 @@ What should happen, top to bottom:
 5. **LLM stats block**:
    ```
    ## LLM Stats
-   - PLANNER: minimax-m3 • 1 call • 1,200 in / 80 out
-   - WRITER:  minimax-m3 • 1 call • 420 in / 320 out
+   - PLANNER: MiniMax-M3 • 1 call • 1,200 in / 80 out
+   - WRITER:  MiniMax-M3 • 1 call • 420 in / 320 out
    ```
 
 If the planner's JSON parse fails, `ctx` does **one repair pass** before
