@@ -53,7 +53,7 @@ are recorded but not pre-estimated. Tunable per command.
 Yes:
 
 - `--offline` forces the heuristic-only path. No LLM calls.
-- The LLM response cache (`llm-cache.db`) makes repeat invocations
+- The LLM response cache (`llm-cache.json`) makes repeat invocations
   free for 7 days. The cache key is
   `sha256(model + toolCount + JSON(messages))`.
 - `--no-cache` disables the cache for one run (e.g. when you
@@ -70,13 +70,13 @@ globs to `ignoreGlobs` via `ctx memory add-ignore`.
 
 ### How do I clear the cache?
 
-Delete `.contextforge/llm-cache.db` and
+Delete `.contextforge/llm-cache.json` and
 `.contextforge/.scan-cache.json`. Both are gitignored. The next
 `ctx` command will rebuild them.
 
 ### Is the cache safe to share across machines?
 
-The cache is a local SQLite file. The planner and writer responses
+The cache is a local JSON file. The planner and writer responses
 are model-specific; if two machines use different model names for
 the same prompt, the cache misses. Don't put it in a shared
 filesystem expecting it to work.

@@ -160,8 +160,8 @@ ctx memory edit        # uses $VISUAL / $EDITOR / vi
 
 ## 7. What you should not do
 
-- **Do not** edit `.contextforge/graph.db` or `llm-cache.db` by hand.
-  They are SQLite caches; deleting them is safe but editing is not.
+- **Do not** edit `.contextforge/graph.json` or `llm-cache.json` by hand.
+  They are JSON caches; deleting them is safe but editing is not.
 - **Do not** commit `.contextforge/project.json` with secrets. The
   file is meant to be shared but it does record the `rootPath`.
 - **Do not** rely on `--offline` mode for "tier-1" outputs. Offline

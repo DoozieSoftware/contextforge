@@ -1,6 +1,5 @@
 import path from "node:path";
 import fs from "node:fs";
-import Database from "better-sqlite3";
 import { graphFilePath, projectDir } from "../memory/project.js";
 import { ensureDir } from "../util/fs.js";
 import type { GraphNode, GraphEdge } from "./types.js";
@@ -18,128 +17,168 @@ export interface GraphDB {
   close(): void;
 }
 
+interface GraphSnapshot {
+  version: 1;
+  files: GraphNode[];
+  edges: GraphEdge[];
+}
+
+const EMPTY: GraphSnapshot = { version: 1, files: [], edges: [] };
+
+/**
+ * JSON-file-backed import graph. Holds the data in memory for fast
+ * BFS lookups and writes the whole snapshot to disk on `close()`.
+ *
+ * Why JSON over SQLite: the graph is small (one row per file, one row
+ * per edge) and the only consumer is a single CLI invocation. SQLite
+ * pulled in a native build (better-sqlite3) that breaks the npm install
+ * on recent Node versions. JSON is a few hundred lines fewer in deps
+ * and good enough for a cache.
+ *
+ * Atomicity: write to `<file>.tmp` then rename, so a crash mid-write
+ * leaves the previous snapshot intact. Worst case is a stale snapshot
+ * that gets rebuilt on the next scan (the .scan-cache.json mtime check
+ * already handles this gracefully).
+ */
 export function openGraph(root: string): GraphDB {
   const dir = projectDir(root);
   ensureDir(dir);
   const file = graphFilePath(root);
-  const db = new Database(file);
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS files (
-      path TEXT PRIMARY KEY,
-      hash TEXT NOT NULL,
-      language TEXT NOT NULL,
-      size INTEGER NOT NULL,
-      symbol_count INTEGER NOT NULL DEFAULT 0,
-      import_count INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS edges (
-      from_path TEXT NOT NULL,
-      to_path TEXT NOT NULL,
-      raw TEXT NOT NULL,
-      resolved INTEGER NOT NULL,
-      PRIMARY KEY (from_path, to_path, raw)
-    );
-    CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_path);
-    CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_path);
-  `);
 
-  const upFile = db.prepare(
-    `INSERT INTO files (path, hash, language, size, symbol_count, import_count)
-     VALUES (@path, @hash, @language, @size, @symbolCount, @importCount)
-     ON CONFLICT(path) DO UPDATE SET
-       hash=excluded.hash,
-       language=excluded.language,
-       size=excluded.size,
-       symbol_count=excluded.symbol_count,
-       import_count=excluded.import_count`,
-  );
-  const upEdge = db.prepare(
-    `INSERT OR IGNORE INTO edges (from_path, to_path, raw, resolved)
-     VALUES (@from, @to, @raw, @resolved)`,
-  );
-  const getFile = db.prepare(`SELECT * FROM files WHERE path = ?`);
-  const listFiles = db.prepare(`SELECT * FROM files`);
-  const listEdges = db.prepare(`SELECT * FROM edges`);
-  const edgesFrom = db.prepare(`SELECT * FROM edges WHERE from_path = ?`);
-  const edgesTo = db.prepare(`SELECT * FROM edges WHERE to_path = ?`);
-  const clearEdges = db.prepare(`DELETE FROM edges`);
-  const clearFiles = db.prepare(`DELETE FROM files`);
-  const clearFn: () => void = () => { clearEdges.run(); clearFiles.run(); };
-  const delFile = db.prepare(`DELETE FROM files WHERE path = ?`);
-  const delEdgeFrom = db.prepare(`DELETE FROM edges WHERE from_path = ?`);
-  const delEdgeTo = db.prepare(`DELETE FROM edges WHERE to_path = ?`);
+  let snapshot: GraphSnapshot = readSnapshot(file);
+  // Indexes: by path, and by from/to for edges.
+  const filesByPath = new Map<string, GraphNode>();
+  for (const n of snapshot.files) filesByPath.set(n.path, n);
+  const edgesByFrom = new Map<string, GraphEdge[]>();
+  const edgesByTo = new Map<string, GraphEdge[]>();
+  for (const e of snapshot.edges) {
+    pushEdge(edgesByFrom, e.from, e);
+    pushEdge(edgesByTo, e.to, e);
+  }
+
+  // Edge identity: (from, to, raw). The SQLite version had a PRIMARY KEY
+  // on that tuple; we replicate with a Set keyed on the same.
+  const edgeKeys = new Set<string>();
+  for (const e of snapshot.edges) edgeKeys.add(edgeKey(e.from, e.to, e.raw));
+
+  let dirty = false;
+
+  function markDirty() {
+    dirty = true;
+  }
 
   return {
     upsertFile(node) {
-      upFile.run(node);
+      const existing = filesByPath.get(node.path);
+      if (
+        existing &&
+        existing.hash === node.hash &&
+        existing.language === node.language &&
+        existing.size === node.size &&
+        existing.symbolCount === node.symbolCount &&
+        existing.importCount === node.importCount
+      ) {
+        return; // no-op
+      }
+      filesByPath.set(node.path, { ...node });
+      markDirty();
     },
     insertEdge(edge) {
-      upEdge.run({
-        from: edge.from,
-        to: edge.to,
-        raw: edge.raw,
-        resolved: edge.resolved ? 1 : 0,
-      });
+      const k = edgeKey(edge.from, edge.to, edge.raw);
+      if (edgeKeys.has(k)) return;
+      edgeKeys.add(k);
+      pushEdge(edgesByFrom, edge.from, edge);
+      pushEdge(edgesByTo, edge.to, edge);
+      markDirty();
     },
     getFile(p) {
-      const row = getFile.get(p) as any;
-      if (!row) return null;
-      return {
-        path: row.path,
-        hash: row.hash,
-        language: row.language,
-        size: row.size,
-        symbolCount: row.symbol_count,
-        importCount: row.import_count,
-      };
+      const n = filesByPath.get(p);
+      return n ? { ...n } : null;
     },
     listFiles() {
-      return (listFiles.all() as any[]).map((r) => ({
-        path: r.path,
-        hash: r.hash,
-        language: r.language,
-        size: r.size,
-        symbolCount: r.symbol_count,
-        importCount: r.import_count,
-      }));
+      return Array.from(filesByPath.values()).map((n) => ({ ...n }));
     },
     listEdges() {
-      return (listEdges.all() as any[]).map((r) => ({
-        from: r.from_path,
-        to: r.to_path,
-        raw: r.raw,
-        resolved: !!r.resolved,
-      }));
+      const all: GraphEdge[] = [];
+      for (const list of edgesByFrom.values()) for (const e of list) all.push({ ...e });
+      return all;
     },
     edgesFrom(p) {
-      return (edgesFrom.all(p) as any[]).map((r) => ({
-        from: r.from_path,
-        to: r.to_path,
-        raw: r.raw,
-        resolved: !!r.resolved,
-      }));
+      return (edgesByFrom.get(p) ?? []).map((e) => ({ ...e }));
     },
     edgesTo(p) {
-      return (edgesTo.all(p) as any[]).map((r) => ({
-        from: r.from_path,
-        to: r.to_path,
-        raw: r.raw,
-        resolved: !!r.resolved,
-      }));
+      return (edgesByTo.get(p) ?? []).map((e) => ({ ...e }));
     },
     clear() {
-      clearFn();
+      if (filesByPath.size === 0 && edgeKeys.size === 0) return;
+      filesByPath.clear();
+      edgesByFrom.clear();
+      edgesByTo.clear();
+      edgeKeys.clear();
+      markDirty();
     },
-    removeFile(p: string) {
-      delFile.run(p);
-      delEdgeFrom.run(p);
-      delEdgeTo.run(p);
+    removeFile(p) {
+      if (filesByPath.delete(p)) markDirty();
+      const from = edgesByFrom.get(p);
+      if (from && from.length) {
+        markDirty();
+        for (const e of from) edgeKeys.delete(edgeKey(e.from, e.to, e.raw));
+        edgesByFrom.delete(p);
+      }
+      const to = edgesByTo.get(p);
+      if (to && to.length) {
+        markDirty();
+        for (const e of to) edgeKeys.delete(edgeKey(e.from, e.to, e.raw));
+        edgesByTo.delete(p);
+      }
     },
     close() {
-      db.close();
+      if (!dirty) return;
+      const next: GraphSnapshot = {
+        version: 1,
+        files: Array.from(filesByPath.values()),
+        edges: collectEdges(edgesByFrom),
+      };
+      writeSnapshot(file, next);
+      snapshot = next;
+      dirty = false;
     },
   };
+}
+
+function readSnapshot(file: string): GraphSnapshot {
+  try {
+    const text = fs.readFileSync(file, "utf8");
+    const parsed = JSON.parse(text) as GraphSnapshot;
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.files) || !Array.isArray(parsed.edges)) {
+      return { ...EMPTY };
+    }
+    return parsed;
+  } catch {
+    return { ...EMPTY };
+  }
+}
+
+function writeSnapshot(file: string, snapshot: GraphSnapshot): void {
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(snapshot));
+  fs.renameSync(tmp, file);
+}
+
+function edgeKey(from: string, to: string, raw: string): string {
+  return `${from}\u0000${to}\u0000${raw}`;
+}
+
+function pushEdge(map: Map<string, GraphEdge[]>, key: string, edge: GraphEdge): void {
+  const list = map.get(key);
+  if (list) list.push(edge);
+  else map.set(key, [edge]);
+}
+
+function collectEdges(byFrom: Map<string, GraphEdge[]>): GraphEdge[] {
+  const out: GraphEdge[] = [];
+  for (const list of byFrom.values()) for (const e of list) out.push(e);
+  return out;
 }
 
 /**

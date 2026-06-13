@@ -8,7 +8,8 @@ dist
 # Local contextforge runtime state. `.contextforge/project.json` is
 # intentionally NOT ignored — commit it so the team shares scanner
 # heuristics. Override per-repo by editing `.gitignore`.
-.contextforge/graph.db
-.contextforge/graph.db-*
+.contextforge/graph.json
+.contextforge/graph.json.tmp
 .contextforge/.scan-cache.json
-.contextforge/llm-cache.db
+.contextforge/llm-cache.json
+.contextforge/llm-cache.json.tmp

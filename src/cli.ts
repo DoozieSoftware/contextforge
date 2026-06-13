@@ -21,10 +21,21 @@ import { log } from "./util/log.js";
 import { parsePositiveInteger, parseNonNegativeInteger, CommandError } from "./util/args.js";
 import { CostExceededError } from "./llm/cost.js";
 import { CachedProvider } from "./llm/cached.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { LLMCache } from "./llm/cache.js";
 import type { CommandContext } from "./commands/types.js";
 
-const VERSION = "0.1.0";
+function readVersion(): string {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(path.join(here, "..", "package.json"), "utf8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+const VERSION = readVersion();
 
 const QUIET = process.env.CTX_QUIET === "1" || process.env.CTX_QUIET === "true";
 function logf(level: "info" | "warn" | "error", msg: string) {

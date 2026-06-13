@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before each LLM call and throws `CostExceededError` (exit 3) when the
   running total exceeds the cap. Configurable via `--max-cost`,
   `--max-tokens`, `CTX_MAX_COST`, or `CTX_MAX_TOKENS`.
-- LLM response cache: `LLMCache` (SQLite-backed, 7-day TTL) and
+- LLM response cache: `LLMCache` (JSON-backed, 7-day TTL) and
   `CachedProvider` wrapper. Replay of the same planner / writer
   prompt is free. Bypassed for tool-call turns. Disable with
   `--no-cache` or `CTX_NO_CACHE=1`; override TTL with
@@ -85,6 +85,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - TUI menu (it was a non-functional stub).
 
+## [0.1.1] — 2026-06-14
+
+### Removed
+- `better-sqlite3` dependency. The npm install was failing on recent
+  Node versions (no prebuilt for Node 25, and the `prebuild-install`
+  / `node-gyp` fallback failed inside npm 11's lifecycle runner with
+  `spawn sh ENOENT`). Replaced by pure-JS in-memory `Map`s persisted
+  to JSON files.
+
+### Changed
+- `.contextforge/graph.db` → `.contextforge/graph.json`.
+- `.contextforge/llm-cache.db` → `.contextforge/llm-cache.json`.
+- The scanner graph and the LLM response cache are now best-effort
+  JSON snapshots. Atomicity is preserved via write-tmp-then-rename.
+  The scanner's `.scan-cache.json` mtime check still detects
+  "nothing changed" and skips re-parsing.
+
+### Fixed
+- `npm install -g contextforge` no longer requires Xcode Command Line
+  Tools on macOS and works on any Node >= 22 (no native build).
+
 ## [0.1.0] — 2026-06-12
 
 ### Added
@@ -92,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three-pass flow: scanner → planner (with sandboxed `read_file` / `list_dir`)
   → writer.
 - Three providers: Anthropic, OpenAI, OpenAI-compatible (Ollama / OpenRouter / vLLM).
-- SQLite-backed import graph.
+- JSON-backed import graph (replaces the better-sqlite3 implementation).
 - Token budgeting with `gpt-tokenizer` (cl100k_base).
 
 [Unreleased]: https://github.com/doozie/contextforge/compare/v0.1.0...HEAD
@@ -120,6 +141,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode)" placeholders.
 - `README.md` corrected: `ctx init` is the explicit setup path, not
   auto-launched; `.gitignore` shipped with the CLI covers
-  `graph.db`, `.scan-cache.json`, and `llm-cache.db` but NOT
+  `graph.json`, `.scan-cache.json`, and `llm-cache.json` but NOT
   `project.json` (commit that for team-shared heuristics).
 - Added a Commands reference table to the README.

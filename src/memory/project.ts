@@ -23,7 +23,7 @@ export interface ProjectMemory {
 
 export const PROJECT_DIR = ".contextforge";
 export const PROJECT_FILE = "project.json";
-export const GRAPH_FILE = "graph.db";
+export const GRAPH_FILE = "graph.json";
 
 export function projectDir(root: string): string {
   return path.join(root, PROJECT_DIR);

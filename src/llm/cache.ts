@@ -1,19 +1,25 @@
 import path from "node:path";
 import fs from "node:fs";
-import Database from "better-sqlite3";
 import { projectDir } from "../memory/project.js";
 import { ensureDir } from "../util/fs.js";
 import { createHash } from "node:crypto";
 
-const CACHE_FILE = "llm-cache.db";
+const CACHE_FILE = "llm-cache.json";
 
 /**
- * SQLite-backed response cache keyed on (model, hash(messages), tools
- * count). Lets the CLI feel instant on repeated runs and makes the
- * planner / writer steps free to re-call without spending tokens.
+ * JSON-file-backed LLM response cache keyed on
+ * (model, hash(messages), toolCount). Lets the CLI feel instant on
+ * repeated runs and makes the planner / writer steps free to re-call
+ * without spending tokens.
  *
  * Cached entries expire after `ttlMs` (default 7 days). Pass `ttlMs: 0`
  * to disable TTL (entries live until manually cleared).
+ *
+ * Why JSON over SQLite: the cache is a best-effort memoization for a
+ * single CLI invocation. SQLite pulled in a native build
+ * (better-sqlite3) that breaks the npm install on recent Node versions.
+ * JSON is fine here because we don't need transactional writes and
+ * stale entries just expire on TTL.
  */
 export interface CacheOptions {
   ttlMs?: number;
@@ -28,45 +34,50 @@ export interface CacheHit {
   model: string;
 }
 
+interface CacheRow {
+  model: string;
+  content: string;
+  toolCalls: { id: string; name: string; input: Record<string, unknown> }[];
+  tokensIn: number;
+  tokensOut: number;
+  createdAt: number;
+}
+
+interface CacheSnapshot {
+  version: 1;
+  rows: Record<string, CacheRow>;
+}
+
+const EMPTY: CacheSnapshot = { version: 1, rows: {} };
+
 export class LLMCache {
-  private db: Database.Database | null = null;
+  private rows: Map<string, CacheRow>;
+  private file: string | null;
   private ttlMs: number;
   private disabled: boolean;
-  private root: string;
+  private dirty: boolean;
 
   constructor(root: string, opts: CacheOptions = {}) {
-    this.root = root;
     this.ttlMs = opts.ttlMs ?? 7 * 24 * 60 * 60 * 1000;
     this.disabled = !!opts.disabled;
-  }
-
-  private ensureOpen(): Database.Database | null {
-    if (this.disabled) return null;
-    if (this.db) return this.db;
-    try {
-      const dir = projectDir(this.root);
-      ensureDir(dir);
-      const file = path.join(dir, CACHE_FILE);
-      const db = new Database(file);
-      db.pragma("journal_mode = WAL");
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS cache (
-          key TEXT PRIMARY KEY,
-          model TEXT NOT NULL,
-          content TEXT NOT NULL,
-          tool_calls TEXT NOT NULL DEFAULT '[]',
-          tokens_in INTEGER NOT NULL DEFAULT 0,
-          tokens_out INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL
-        );
-      `);
-      this.db = db;
-      return db;
-    } catch {
-      // cache is best-effort
-      this.disabled = true;
-      return null;
+    this.dirty = false;
+    if (this.disabled) {
+      this.file = null;
+      this.rows = new Map();
+      return;
     }
+    try {
+      const dir = projectDir(root);
+      ensureDir(dir);
+      this.file = path.join(dir, CACHE_FILE);
+    } catch {
+      // best-effort
+      this.disabled = true;
+      this.file = null;
+      this.rows = new Map();
+      return;
+    }
+    this.rows = this.readFromDisk();
   }
 
   static keyFor(model: string, messages: unknown[], toolCount: number): string {
@@ -80,25 +91,21 @@ export class LLMCache {
   }
 
   get(key: string): CacheHit | null {
-    const db = this.ensureOpen();
-    if (!db) return null;
-    try {
-      const row = db.prepare(`SELECT * FROM cache WHERE key = ?`).get(key) as any;
-      if (!row) return null;
-      if (this.ttlMs > 0 && Date.now() - row.created_at > this.ttlMs) {
-        db.prepare(`DELETE FROM cache WHERE key = ?`).run(key);
-        return null;
-      }
-      return {
-        content: row.content,
-        toolCalls: JSON.parse(row.tool_calls),
-        tokensIn: row.tokens_in,
-        tokensOut: row.tokens_out,
-        model: row.model,
-      };
-    } catch {
+    if (this.disabled) return null;
+    const row = this.rows.get(key);
+    if (!row) return null;
+    if (this.ttlMs > 0 && Date.now() - row.createdAt > this.ttlMs) {
+      this.rows.delete(key);
+      this.dirty = true;
       return null;
     }
+    return {
+      content: row.content,
+      toolCalls: row.toolCalls,
+      tokensIn: row.tokensIn,
+      tokensOut: row.tokensOut,
+      model: row.model,
+    };
   }
 
   put(
@@ -109,47 +116,64 @@ export class LLMCache {
     tokensIn: number,
     tokensOut: number,
   ): void {
-    const db = this.ensureOpen();
-    if (!db) return;
+    if (this.disabled) return;
+    this.rows.set(key, {
+      model,
+      content,
+      toolCalls,
+      tokensIn,
+      tokensOut,
+      createdAt: Date.now(),
+    });
+    this.dirty = true;
+  }
+
+  clear(): void {
+    if (this.disabled) return;
+    if (this.rows.size === 0) return;
+    this.rows.clear();
+    this.dirty = true;
+  }
+
+  close(): void {
+    if (this.disabled || !this.dirty || !this.file) return;
     try {
-      db.prepare(
-        `INSERT OR REPLACE INTO cache (key, model, content, tool_calls, tokens_in, tokens_out, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(key, model, content, JSON.stringify(toolCalls), tokensIn, tokensOut, Date.now());
+      const snapshot: CacheSnapshot = { version: 1, rows: {} };
+      for (const [k, v] of this.rows) snapshot.rows[k] = v;
+      const tmp = this.file + ".tmp";
+      fs.writeFileSync(tmp, JSON.stringify(snapshot));
+      fs.renameSync(tmp, this.file);
+      this.dirty = false;
     } catch {
       // best-effort
     }
   }
 
-  clear(): void {
-    const db = this.ensureOpen();
-    if (!db) return;
-    try {
-      db.prepare(`DELETE FROM cache`).run();
-    } catch {
-      // ignore
-    }
-  }
-
-  close(): void {
-    if (this.db) {
-      try {
-        this.db.close();
-      } catch {
-        // ignore
-      }
-      this.db = null;
-    }
-  }
-
   /** Best-effort garbage collection. Called once on construction. */
   gc(): void {
-    const db = this.ensureOpen();
-    if (!db || this.ttlMs <= 0) return;
+    if (this.disabled || this.ttlMs <= 0) return;
+    const cutoff = Date.now() - this.ttlMs;
+    let removed = 0;
+    for (const [k, v] of this.rows) {
+      if (v.createdAt < cutoff) {
+        this.rows.delete(k);
+        removed++;
+      }
+    }
+    if (removed > 0) this.dirty = true;
+  }
+
+  private readFromDisk(): Map<string, CacheRow> {
+    if (!this.file) return new Map();
     try {
-      db.prepare(`DELETE FROM cache WHERE created_at < ?`).run(Date.now() - this.ttlMs);
+      const text = fs.readFileSync(this.file, "utf8");
+      const parsed = JSON.parse(text) as CacheSnapshot;
+      if (!parsed || parsed.version !== 1 || !parsed.rows || typeof parsed.rows !== "object") {
+        return new Map();
+      }
+      return new Map(Object.entries(parsed.rows));
     } catch {
-      // ignore
+      return new Map();
     }
   }
 }

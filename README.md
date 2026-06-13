@@ -21,7 +21,7 @@ rich, curated context for the questions engineers actually ask:
 All content commands (`understand` / `trace` / `review` / `breakdown` / `proposal`) are LLM-driven by default. A three-pass flow does the work:
 
 1. **Scanner** walks the repo (PHP / JS/TS / Python via lightweight parsers),
-   builds a SQLite import graph, and returns a ranked candidate list.
+   builds an import graph, and returns a ranked candidate list.
 2. **Planner model** (cheap, e.g. `claude-haiku-4-5`) inspects the candidates with
    sandboxed `read_file` / `list_dir` tool calls and returns the final selection.
 3. **Writer model** (mid-tier, e.g. `claude-sonnet-4-5`) emits the command-specific
@@ -161,13 +161,13 @@ These work for every subcommand (set on the program, before the subcommand):
 
 - `.contextforge/project.json` — detected stack, ignore globs, test patterns
   (commit this so the team shares scanner heuristics)
-- `.contextforge/graph.db` — SQLite cache of the import graph
+- `.contextforge/graph.json` — JSON cache of the import graph
 - `.contextforge/.scan-cache.json` — mtime manifest that lets subsequent
   `ctx` runs skip the scanner when nothing has changed
-- `.contextforge/llm-cache.db` — SQLite response cache (LLM replies
+- `.contextforge/llm-cache.json` — JSON response cache (LLM replies
   keyed on `model + messages + toolCount`, 7-day TTL)
 
-`graph.db`, `.scan-cache.json`, and `llm-cache.db` are gitignored. The
+`graph.json`, `.scan-cache.json`, and `llm-cache.json` are gitignored. The
 `.gitignore` shipped with `contextforge` covers all three. `project.json`
 is intentionally committed so teams share the same scanner heuristics —
 override per-repo by editing `.gitignore` or moving the file outside the
