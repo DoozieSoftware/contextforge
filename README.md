@@ -18,6 +18,8 @@ rich, curated context for the questions engineers actually ask:
 **Testing on real code?** See [`docs/TEST_PROJECTS.md`](docs/TEST_PROJECTS.md)
 (one greenfield, one open-source project). Other docs: [`CONTRIBUTING`](docs/CONTRIBUTING.md), [`FAQ`](docs/FAQ.md).
 
+**Quick recipes**: [Test on a greenfield with TokenRouter + MiniMax-M3](docs/RECIPE_TOKENROUTER.md).
+
 All content commands (`understand` / `trace` / `review` / `breakdown` / `proposal`) are LLM-driven by default. A three-pass flow does the work:
 
 1. **Scanner** walks the repo (PHP / JS/TS / Python via lightweight parsers),
