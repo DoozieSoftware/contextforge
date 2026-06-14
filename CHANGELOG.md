@@ -85,6 +85,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - TUI menu (it was a non-functional stub).
 
+## [0.1.2] — 2026-06-14
+
+### Changed
+- Add `prepack` script (`npm run build`) so published tarballs always
+  contain a fresh `dist/cli.js`. Removes the need for users to
+  `npm run build` after install.
+- Add `postinstall` script (`chmod +x dist/cli.js 2>/dev/null || true`)
+  as a defensive re-chmod in case npm strips the executable bit on
+  extract.
+
+### Notes
+- The npm-published `contextforge@0.1.2` package does not exist yet
+  (this is a v0.1.2 source-level release). To get the registry install
+  path (`npm install -g contextforge`), run `npm publish` once from
+  the repo root after `npm login`. Until then, the canonical install
+  path is `npm install -g github:DoozieSoftware/contextforge` — which
+  works on a clean machine but can fail on machines where the npm
+  cache has root-owned files left over from `sudo npm` invocations.
+  See `docs/RECIPE_TOKENROUTER.md` for the full troubleshooting table.
+
 ## [0.1.1] — 2026-06-14
 
 ### Removed
