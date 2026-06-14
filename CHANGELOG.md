@@ -85,6 +85,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - TUI menu (it was a non-functional stub).
 
+## [0.1.3] — 2026-06-14
+
+### Fixed
+- `postinstall` was a shell command (`chmod +x dist/cli.js`) that
+  failed on npm 11.x with `spawn sh ENOENT` because the lifecycle
+  runner spawned the script in a sanitized environment without
+  `/bin/sh` on PATH. Replaced with a node script
+  (`scripts/postinstall.js`) that does the `chmod` via `fs.chmodSync`.
+  No shell required.
+
+### Notes
+- Still requires `sudo rm -f /usr/local/lib/node_modules/contextforge`
+  once on machines with a broken symlink from a prior failed install.
+
 ## [0.1.2] — 2026-06-14
 
 ### Changed

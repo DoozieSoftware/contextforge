@@ -1,6 +1,6 @@
 {
   "name": "contextforge",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Token-efficient context packages for any AI tool. Terminal-first CLI for understanding, tracing, reviewing, breaking down, and proposing \u2014 all backed by a small scanner-built context package.",
   "license": "MIT",
   "type": "module",
@@ -11,7 +11,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts"
   ],
   "engines": {
     "node": ">=22"
@@ -25,7 +26,7 @@
     "test:live": "CTX_LIVE=1 vitest run tests/e2e",
     "lint": "tsc --noEmit",
     "prepack": "npm run build",
-    "postinstall": "chmod +x dist/cli.js 2>/dev/null || true"
+    "postinstall": "node ./scripts/postinstall.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
