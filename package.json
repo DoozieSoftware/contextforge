@@ -1,7 +1,7 @@
 {
-  "name": "contextforge",
-  "version": "0.1.3",
-  "description": "Token-efficient context packages for any AI tool. Terminal-first CLI for understanding, tracing, reviewing, breaking down, and proposing \u2014 all backed by a small scanner-built context package.",
+  "name": "@dooz-ecosystem/contextforge",
+  "version": "0.1.6",
+  "description": "Token-efficient context packages for any AI tool. Terminal-first CLI for understanding, tracing, reviewing, breaking down, and proposing — all backed by a small scanner-built context package.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && find dist -type f \\( -name \"*.d.ts\" -o -name \"*.d.ts.map\" -o -name \"*.js.map\" \\) -delete && chmod +x dist/cli.js",
+    "build": "tsc -p tsconfig.json && find dist -type f \\( -name \"*.d.ts\" -o -name \"*.d.ts.map\" -o -name \"*.js.map\" \\) -delete && mkdir -p dist/llm/prompts && cp src/llm/prompts/*.md dist/llm/prompts/ && chmod +x dist/cli.js",
     "start": "tsx src/cli.ts",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
@@ -26,7 +26,8 @@
     "test:live": "CTX_LIVE=1 vitest run tests/e2e",
     "lint": "tsc --noEmit",
     "prepack": "npm run build",
-    "postinstall": "node ./scripts/postinstall.js"
+    "postinstall": "node ./scripts/postinstall.js",
+    "copy-prompts": "mkdir -p dist/llm/prompts && cp src/llm/prompts/*.md dist/llm/prompts/"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -55,5 +56,8 @@
     "tokens",
     "scanner",
     "llm"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

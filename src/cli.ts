@@ -10,6 +10,7 @@ import { runReview } from "./commands/review.js";
 import { runBreakdown } from "./commands/breakdown.js";
 import { runProposal } from "./commands/proposal.js";
 import { runScan } from "./commands/scan.js";
+import { runPrompt, listPromptKinds, type PromptKind } from "./commands/prompt.js";
 import { runMemory } from "./commands/memory.js";
 import { renderOutput, type OutputFormat } from "./context/render.js";
 import { readProjectMemory, detectProjectMemory, writeProjectMemory } from "./memory/project.js";
@@ -381,6 +382,46 @@ program
       target: result.target,
     });
     writeOutput(out, "context", program.opts().output);
+  });
+
+program
+  .command("prompt <kind> <target>")
+  .description(
+    "Emit a paste-ready prompt (no LLM call) for a target file. " +
+    "Copy the output into Codex, Claude, or ChatGPT. " +
+    "Kinds: " + listPromptKinds().join(", "),
+  )
+  .option("--query <text>", "Optional query/question to add to the prompt")
+  .option("--max-files <n>", "Max files in the context package", "8")
+  .option("--budget <n>", "Approx token budget for the package", "14000")
+  .action(async (kind: string, target: string, opts: any) => {
+    const ctx = await buildContext({ offline: true, forceOffline: true, noAutoInit: false });
+    if (!ctx) return;
+    const known = listPromptKinds();
+    if (!known.includes(kind)) {
+      process.stderr.write(`Error: unknown prompt kind "${kind}". Available: ${known.join(", ")}\n`);
+      process.exitCode = 2;
+      return;
+    }
+    const result = await runPrompt(
+      {
+        kind: kind as PromptKind,
+        target,
+        query: opts.query,
+        maxFiles: parsePositiveInteger(opts.maxFiles, "--max-files"),
+        budgetTokens: parsePositiveInteger(opts.budget, "--budget"),
+      },
+      ctx,
+    );
+    const out = renderOutput("markdown", {
+      title: result.title,
+      body: result.body,
+      report: result.report,
+      packageFiles: result.packageFiles,
+      contextPackageMd: result.contextPackageMd,
+      target: result.target,
+    });
+    writeOutput(out, "markdown", program.opts().output);
   });
 
 async function main() {

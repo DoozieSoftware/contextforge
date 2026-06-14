@@ -12,7 +12,7 @@ fully offline and only calls an LLM if you opt in.
 ## 1. Install
 
 ```bash
-npm install -g contextforge
+npm install -g @dooz-ecosystem/contextforge
 ```
 
 Or to try it without polluting your global installs:

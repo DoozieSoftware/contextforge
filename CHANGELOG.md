@@ -178,3 +178,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `graph.json`, `.scan-cache.json`, and `llm-cache.json` but NOT
   `project.json` (commit that for team-shared heuristics).
 - Added a Commands reference table to the README.
+
+## [0.1.4] — 2026-06-14
+
+### Changed
+- **Package renamed** to scoped `@dooz-ecosystem/contextforge` — npm rejected the unscoped name as too similar to existing `context-forge`.
+- Install: `npm install -g @dooz-ecosystem/contextforge`
+- Binary unchanged: still `ctx`
+- All other code, docs, and behavior identical to 0.1.3.
+
+## [0.1.5] — 2026-06-14
+
+### Changed
+- All docs (`README.md`, `docs/QUICKSTART.md`, `docs/RECIPE_TOKENROUTER.md`,
+  `docs/TEST_PROJECTS.md`, `docs/FAQ.md`) now point at the published
+  `@dooz-ecosystem/contextforge` install line. The `github:` install path
+  is no longer the recommended route.
+- `docs/RECIPE_TOKENROUTER.md` "Long-term fix" section replaced with a
+  "Status: shipped on npm" note (it's done).
+- `package.json` now has `"publishConfig": { "access": "public" }` so
+  `npm publish` no longer needs the `--access public` flag for this
+  scoped package.
+
+## [0.1.6] — 2026-06-14
+
+### Added
+- **`ctx prompt <kind> <target>`** — emit a paste-ready prompt (no LLM call, no
+  API key) for the target file. Kinds: `understand`, `trace`, `review`,
+  `breakdown`, `proposal`, `explain`, `find-bug`. The output is the smallest
+  self-contained context package + the exact deliverable shape (sections) the
+  LLM should emit, suitable for direct paste into Codex, Claude, or ChatGPT.
+- `--query` flag on `ctx prompt trace` to embed a question in the prompt.
+- `--max-files` and `--budget` on `ctx prompt` to tune the context package size.
+
+### Fixed
+- **Prompt templates not in dist/**: the `tsc` build did not copy `src/llm/prompts/*.md`
+  to `dist/llm/prompts/`, so `ctx understand` (and friends) failed at runtime with
+  `Prompt template not found: understand`. Build script now copies them.
+
+### Changed
+- README rewritten to lead with the `ctx prompt ...` no-LLM workflow (the
+  dominant use case for most engineers).

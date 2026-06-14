@@ -128,7 +128,7 @@ size for `ctx` to walk end-to-end in a single command.
 ```bash
 git clone https://github.com/refactoring/refactoring-example
 cd refactoring-example
-npm install -g contextforge   # if you haven't already
+npm install -g @dooz-ecosystem/contextforge   # if you haven't already
 ```
 
 ### Test plan

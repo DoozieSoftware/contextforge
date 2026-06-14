@@ -90,7 +90,7 @@ Two common recipes.
 **Lint-only (no LLM)**:
 
 ```yaml
-- run: npm install -g contextforge
+- run: npm install -g @dooz-ecosystem/contextforge
 - run: ctx review --base origin/main --format json --output ctx-review.json
 ```
 

@@ -1,13 +1,43 @@
 # Recipe: test `ctx` on a greenfield with TokenRouter + MiniMax-M3
 
-> **Pre-req**: you've installed `ctx` 0.1.1+ (no native build, no Xcode CLI needed):
-> ```bash
-> npm install -g github:DoozieSoftware/contextforge
-> ctx --version   # → 0.1.1 (or later)
-> ```
->
-> If your install is failing, you almost certainly have the old 0.1.0 tarball
-> cached locally. Reinstall with `--force` or clear your npm cache.
+> **TL;DR** — your two install errors are an old tarball + a corrupt npm cache, not a ctx bug. Fix in this order, then run the recipe.
+
+## 0. One-time install fix (run BEFORE the recipe)
+
+Your recent errors:
+
+- `ENOENT: spawn sh … npm-standalone.js` → npm 11.x's tarball cache is corrupted
+- `ENOTDIR: rename '/usr/local/lib/node_modules/contextforge' -> '/usr/local/lib/node_modules/.contextforge-XXX'` → stale symlink/file at the install path
+- `TAR_ENTRY_ERROR … rxjs` → tarball was extracted into a path that's now a regular file, not a directory
+
+**Single fix sequence** (copy-paste, the `|| true` lets it keep going if a step doesn't apply):
+
+```bash
+# Step 1 — nuke the stale install artifact at the destination
+sudo rm -rf /usr/local/lib/node_modules/contextforge \
+           /usr/local/lib/node_modules/.contextforge-* \
+           /usr/local/lib/lib/node_modules/contextforge 2>/dev/null
+
+# Step 2 — repair the npm cache (root-owned files from earlier sudo invocations)
+sudo chown -R "$USER" ~/.npm
+
+# Step 3 — install the latest tag from GitHub
+npm install -g @dooz-ecosystem/contextforge
+
+# Step 4 — verify
+ctx --version   # → 0.1.6
+```
+
+If `ctx --version` still says "command not found" after step 3, your global bin dir isn't on PATH. Most brew installs are fine, but if not:
+
+```bash
+# Brew default global bin
+echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+which ctx
+```
+
+If **step 3** itself fails with a fresh error (not the old `spawn sh`), capture the full log and send it back — that's a new failure mode and we'll trace it.
 
 ---
 
@@ -65,8 +95,7 @@ export CTX_OPENAI_COMPAT_BASE_URL=https://api.tokenrouter.com/v1
 export CTX_OPENAI_COMPAT_API_KEY="<paste-your-tokenrouter-key>"
 
 # The model id as TokenRouter lists it. If you see "model not found",
-# check your TokenRouter dashboard for the exact slug — common patterns
-# are MiniMax-M3 (capitalised as TokenRouter lists it).
+# check your TokenRouter dashboard for the exact slug.
 export CTX_PLANNER_MODEL=MiniMax-M3
 export CTX_WRITER_MODEL=MiniMax-M3
 ```
@@ -74,7 +103,6 @@ export CTX_WRITER_MODEL=MiniMax-M3
 Optional: pin the env so it survives shell restarts.
 
 ```bash
-# One-liner that appends the four lines to ~/.zshrc (or ~/.bashrc)
 cat >> ~/.zshrc <<'EOF'
 
 # ctx → TokenRouter
@@ -95,10 +123,7 @@ cd ~/ctx-demo
 ctx scan
 ```
 
-Expected output (on stderr: `Files discovered: 3` and a `Running with
-provider=openai-compat` log line; on stdout: a markdown report). If you
-see `No scannable files found`, double-check `ls app tests` shows the
-`.py` files.
+Expected: stderr says `Files discovered: 3` and stdout is a markdown report. If you see `No scannable files found`, double-check `ls app tests` shows the `.py` files.
 
 ## 4. First LLM-backed command
 
@@ -108,13 +133,10 @@ ctx understand app/billing.py
 
 What should happen, top to bottom:
 
-1. **Scanner log** on stderr: "Files discovered: 3" plus a `## Scanner
-   summary` block.
-2. **LLM calls** (2-4 total, visible in the LLM stats block at the end):
-   - Planner: 1-2 calls, returns `{"selectedFiles": [...], "planNotes": "..."}`
-     in a code fence (TokenRouter's openai-compat endpoint forwards the
-     OpenAI Chat Completions shape).
-   - Writer: 1-2 calls, returns the markdown body.
+1. **Scanner log** on stderr: `Files discovered: 3`
+2. **LLM calls** (2-4 total, in the LLM stats block):
+   - Planner: 1-2 calls, returns `{"selectedFiles": [...], "planNotes": "..."}` in a code fence
+   - Writer: 1-2 calls, returns the markdown body
 3. **Markdown body** with these 5 sections, in order:
    ```
    ## Purpose
@@ -123,15 +145,7 @@ What should happen, top to bottom:
    ## Risk Areas
    ## Suggested Reading Order
    ```
-4. **Budget footer**:
-   ```
-   ---
-   Files Scanned: 3
-   Files Selected: 2
-   Repo Size:     150 tokens
-   Context Size:  420 tokens
-   Reduction:     -180.0%   (negative is fine for tiny repos)
-   ```
+4. **Budget footer** (negative reduction is fine for tiny repos)
 5. **LLM stats block**:
    ```
    ## LLM Stats
@@ -139,9 +153,7 @@ What should happen, top to bottom:
    - WRITER:  MiniMax-M3 • 1 call • 420 in / 320 out
    ```
 
-If the planner's JSON parse fails, `ctx` does **one repair pass** before
-falling back. If the writer's output misses a required `## Section`, it
-also does one repair pass. So expect 2-4 LLM calls in stats.
+If planner JSON parse fails, ctx does **one repair pass** before falling back. Same for the writer. Expect 2-4 LLM calls in stats.
 
 ## 5. Trace, review, package
 
@@ -152,7 +164,7 @@ ctx package app/billing.py --output /tmp/pkg.md
 cat /tmp/pkg.md
 ```
 
-For `ctx review` to be interesting, make a real diff:
+For an interesting `ctx review`:
 
 ```bash
 git add . && git commit -qm "init"
@@ -163,16 +175,11 @@ ctx review                       # → a "## Low" finding naming billing.py
 
 ## 6. Disable cache for a fresh call (optional)
 
-The LLM response cache makes repeat invocations free for 7 days. To
-force a fresh call:
+The LLM response cache makes repeat invocations free for 7 days. To force a fresh call:
 
 ```bash
 ctx understand app/billing.py --no-cache
-```
-
-Or wipe the cache:
-
-```bash
+# or
 rm -f .contextforge/llm-cache.json
 ```
 
@@ -181,12 +188,14 @@ rm -f .contextforge/llm-cache.json
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Error: openai-compat requires CTX_OPENAI_COMPAT_BASE_URL` | Env var not exported in this shell | Re-export, or `source ~/.zshrc` |
-| `401 Unauthorized` | Wrong TokenRouter key, or key missing the right scope | Re-check the key on tokenrouter.com |
+| `401 Unauthorized` | Wrong TokenRouter key, or missing scope | Re-check the key on tokenrouter.com |
 | `404 model not found` | Model id typo or not on your plan | Check your TokenRouter dashboard for the exact slug |
-| `429 Too Many Requests` | Rate-limited | The `withRetry` wrapper in `ctx` does exponential backoff; wait, or set `--max-steps 4` to use fewer planner rounds |
-| Output missing `##` sections | Writer returned prose without headings | The loop's repair pass usually fixes this; if not, file an issue with the model name + the first 30 lines of output |
-| `No scannable files found` | You ran from the wrong directory | `cd ~/ctx-demo` directly; `ls app tests` should show the `.py` files |
-| `--max-cost 1.00` doesn't stop overspend | `openai-compat` preset has `inputCostPer1M: 0` | Set a spend limit on https://www.tokenrouter.com/ |
+| `429 Too Many Requests` | Rate-limited | The `withRetry` wrapper does exponential backoff; wait, or set `--max-steps 4` |
+| Output missing `##` sections | Writer returned prose without headings | The loop's repair pass usually fixes this; if not, file an issue with the model name + first 30 lines |
+| `No scannable files found` | Wrong directory | `cd ~/ctx-demo`; `ls app tests` should show `.py` files |
+| `ENOENT: spawn sh … npm-standalone.js` (during install) | npm tarball cache corrupted | Re-run step 0 above |
+| `ENOTDIR: rename … contextforge` (during install) | Stale install path | Re-run step 0 above |
+| `ctx: command not found` after install | Global bin not on PATH | `echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc` |
 
 ## Quick reference
 
@@ -196,3 +205,14 @@ rm -f .contextforge/llm-cache.json
 - TokenRouter base URL: `https://api.tokenrouter.com/v1`
 - Auth header: `Authorization: Bearer <key>`
 
+## Status: shipped on npm
+
+`@dooz-ecosystem/contextforge@0.1.6` is live on the public registry. Install with:
+
+```bash
+npm install -g @dooz-ecosystem/contextforge
+ctx --version   # → 0.1.6
+```
+
+The `github:` install path is no longer the recommended route — use the scoped
+package instead. Re-installs after a new version are automatic on next `npm i -g`.

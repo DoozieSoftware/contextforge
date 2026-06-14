@@ -1,7 +1,19 @@
 # ContextForge (`ctx`)
 
-Token-efficient context packages for any AI tool. Terminal-first CLI that prepares
-rich, curated context for the questions engineers actually ask:
+**Token-efficient, paste-ready prompts for any LLM.** Terminal-first CLI that scans
+your repo, picks the minimum files you actually need, and emits a self-contained
+prompt you can paste into Codex, Claude, or ChatGPT — no API key required for
+the no-LLM commands.
+
+**Quickest path** (no LLM, no API key, ~2 seconds):
+
+```bash
+ctx prompt find-bug src/billing.ts            # paste the output into Codex/Claude
+ctx prompt understand src/auth/login.ts
+ctx prompt trace src/payments/charge.ts --query "double-charge on retry"
+```
+
+**LLM-driven commands** (call a model end-to-end, requires `ctx init`):
 
 - `ctx understand <file>` — what is this file and what does it touch?
 - `ctx trace "<query>"` — root-cause a query across the codebase
@@ -11,6 +23,8 @@ rich, curated context for the questions engineers actually ask:
 - `ctx package <file>` — emit the raw context package (no LLM)
 - `ctx scan [target]` — diagnostic: what does the scanner see?
 - `ctx init` / `ctx memory show|add-...` — provider and project-memory setup
+- `ctx prompt <kind> <target>` — paste-ready prompt (no LLM): `understand`,
+  `trace`, `review`, `breakdown`, `proposal`, `explain`, `find-bug`
 
 **New here?** Start with [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 **Want the design?** Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -34,7 +48,7 @@ Every command prints a budget footer and (when LLM is enabled) an LLM stats bloc
 ## Install
 
 ```bash
-npm install -g contextforge
+npm install -g @dooz-ecosystem/contextforge
 ```
 
 ## First run
